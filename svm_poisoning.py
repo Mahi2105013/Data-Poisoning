@@ -1253,35 +1253,37 @@ def run_experiment_3(X_mnist, y_mnist):
 # ==============================================================================
 # SECTION 10: INITIALIZATION AND GRADIENT CHECK
 # ==============================================================================
-print("=" * 60)
-print("POISONING ATTACKS AGAINST SVMs -- Biggio et al. (ICML 2012)")
-print("=" * 60)
-start_time = time.time()
+if __name__ == "__main__":
+    print("=" * 60)
+    print("POISONING ATTACKS AGAINST SVMs -- Biggio et al. (ICML 2012)")
+    print("=" * 60)
+    start_time = time.time()
 
-# Verifies that our analytical gradient matches finite differences
-# and sets GRADIENT_SIGN appropriately.
-per_kernel_sign = check_gradient_sign()
+    # Verifies that our analytical gradient matches finite differences
+    # and sets GRADIENT_SIGN appropriately.
+    per_kernel_sign = check_gradient_sign()
 
-# ==============================================================================
-# SECTION 11: RUN EXPERIMENT 1
-# ==============================================================================
-run_experiment_1(per_kernel_sign=per_kernel_sign)
+    # ==============================================================================
+    # SECTION 11: RUN EXPERIMENT 1
+    # ==============================================================================
+    run_experiment_1(per_kernel_sign=per_kernel_sign)
 
-# ==============================================================================
-# SECTION 12: RUN EXPERIMENT 2
-# ==============================================================================
-X_mnist, y_mnist = load_mnist()
-run_experiment_2(X_mnist, y_mnist)
+    # ==============================================================================
+    # SECTION 12: RUN EXPERIMENT 2
+    # ==============================================================================
+    X_mnist, y_mnist = load_mnist()
+    run_experiment_2(X_mnist, y_mnist)
 
-# ==============================================================================
-# SECTION 13: RUN EXPERIMENT 3
-# ==============================================================================
-run_experiment_3(X_mnist, y_mnist)
+    # ==============================================================================
+    # SECTION 13: RUN EXPERIMENT 3
+    # ==============================================================================
+    run_experiment_3(X_mnist, y_mnist)
 
-# ==============================================================================
-# SECTION 14: SUMMARY
-# ==============================================================================
-elapsed = time.time() - start_time
-print("\n" + "=" * 60)
-print(f"All experiments completed in {elapsed:.1f} seconds.")
-print("=" * 60)
+    # ==============================================================================
+    # SECTION 14: SUMMARY
+    # ==============================================================================
+    elapsed = time.time() - start_time
+    print("\n" + "=" * 60)
+    print(f"All experiments completed in {elapsed:.1f} seconds.")
+    print("=" * 60)
+
