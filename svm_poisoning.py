@@ -6,7 +6,7 @@ POISONING ATTACKS AGAINST SUPPORT VECTOR MACHINES
 Faithful implementation of:
   "Poisoning Attacks against Support Vector Machines"
   Battista Biggio, Blaine Nelson, Pavel Laskov
-  ICML 2012 — arXiv:1206.6389v3
+  ICML 2012 -- arXiv:1206.6389v3
 
 This script implements the gradient-based poisoning attack described in the paper.
 The attack finds a specially crafted data point that, when injected into the SVM's
@@ -24,7 +24,7 @@ Core idea:
 Requirements:
   pip install numpy matplotlib scikit-learn
 
-IMPORTANT — Academic integrity:
+IMPORTANT -- Academic integrity:
   - The CORE ATTACK (gradient computation, attack loop) is implemented from scratch
   - scikit-learn is used ONLY as the SVM training environment (standard framework)
   - NO attack libraries (ART, foolbox, TextAttack) are used
@@ -41,14 +41,14 @@ import warnings
 warnings.filterwarnings("ignore")  # Suppress sklearn convergence warnings
 
 # ==============================================================================
-# SECTION 1: REPRODUCIBILITY — Pin all random seeds
+# SECTION 1: REPRODUCIBILITY -- Pin all random seeds
 # ==============================================================================
 SEED = 42
 np.random.seed(SEED)
 
 # Global variable: gradient sign (+1 or -1), determined by numerical check.
-# The paper's Eq. (10) as written gives ∂g_k/∂u (the gradient of the margin
-# condition). But L = Σ max(0, -g_k), so ∂L/∂u = Σ -∂g_k/∂u for active
+# The paper's Eq. (10) as written gives dg_k/du (the gradient of the margin
+# condition). But L = Sigma max(0, -g_k), so dL/du = Sigma -dg_k/du for active
 # points. This means we need to NEGATE the paper's formula to get the
 # true gradient ascent direction. Confirmed by numerical gradient check.
 GRADIENT_SIGN = -1
@@ -57,7 +57,7 @@ GRADIENT_SIGN = -1
 # ==============================================================================
 # SECTION 2: KERNEL FUNCTIONS AND THEIR GRADIENTS (Paper Section 2.2)
 # ==============================================================================
-# The paper shows that the poisoning attack can be "kernelized" — meaning the
+# The paper shows that the poisoning attack can be "kernelized" -- meaning the
 # gradient computation only requires gradients of the kernel function K(x_i, x_c)
 # with respect to the attack point x_c.  This is what makes the attack work
 # directly in INPUT SPACE, even for nonlinear kernels (a key contribution).
@@ -79,14 +79,14 @@ class LinearKernel:
         Gradient of K(x_i, x_c) w.r.t. x_c, for each row x_i in X.
 
         From Section 2.2 of the paper:
-            ∂K(x_i, x_c) / ∂x_c = x_i
+            dK(x_i, x_c) / dx_c = x_i
 
         Parameters:
-            X:  (n, d) array — the "other" points
-            xc: (d,) array  — the attack point
+            X:  (n, d) array -- the "other" points
+            xc: (d,) array  -- the attack point
 
         Returns:
-            (n, d) array — row i is ∂K(x_i, x_c)/∂x_c = x_i
+            (n, d) array -- row i is dK(x_i, x_c)/dx_c = x_i
         """
         # For the linear kernel, the gradient is independent of x_c.
         if X.ndim == 1:
@@ -97,52 +97,52 @@ class LinearKernel:
 class RBFKernel:
     """
     RBF (Radial Basis Function) Kernel:
-        K(x_i, x_j) = exp(-γ/2 · ||x_i - x_j||²)
+        K(x_i, x_j) = exp(-gamma/2 · ||x_i - x_j||²)
 
     IMPORTANT CONVENTION NOTE:
-      The PAPER uses K = exp(-γ/2 · ||...||²)  (note the /2 factor).
-      scikit-learn uses K = exp(-γ_sk · ||...||²)  (no /2 factor).
-      Relationship: γ_sklearn = γ_paper / 2.
-      We store γ_paper and convert when creating sklearn's SVC.
+      The PAPER uses K = exp(-gamma/2 · ||...||²)  (note the /2 factor).
+      scikit-learn uses K = exp(-gamma_sk · ||...||²)  (no /2 factor).
+      Relationship: gamma_sklearn = gamma_paper / 2.
+      We store gamma_paper and convert when creating sklearn's SVC.
     """
 
     def __init__(self, gamma):
         """
         Parameters:
-            gamma: The paper's γ parameter (used in exp(-γ/2 · ||...||²))
+            gamma: The paper's gamma parameter (used in exp(-gamma/2 · ||...||²))
         """
         self.gamma = gamma          # Paper's convention
         self.gamma_sklearn = gamma / 2.0  # sklearn's convention
 
     def compute(self, X1, X2):
-        """Compute kernel matrix K[i,j] = exp(-γ/2 · ||X1[i] - X2[j]||²)."""
+        """Compute kernel matrix K[i,j] = exp(-gamma/2 · ||X1[i] - X2[j]||²)."""
         # Efficient squared-distance computation using the identity:
         # ||a - b||² = ||a||² + ||b||² - 2 a·b
         sq_norms_1 = np.sum(X1 ** 2, axis=1, keepdims=True)       # (n1, 1)
         sq_norms_2 = np.sum(X2 ** 2, axis=1, keepdims=True).T     # (1, n2)
         sq_dists = sq_norms_1 + sq_norms_2 - 2.0 * (X1 @ X2.T)   # (n1, n2)
         sq_dists = np.maximum(sq_dists, 0.0)  # Clamp negatives from float error
-        return np.exp(-self.gamma_sklearn * sq_dists)  # = exp(-γ/2 · ||...||²)
+        return np.exp(-self.gamma_sklearn * sq_dists)  # = exp(-gamma/2 · ||...||²)
 
     def gradient_wrt_xc(self, X, xc):
         """
         Gradient of K(x_i, x_c) w.r.t. x_c, for each row x_i in X.
 
         From Section 2.2 of the paper:
-            ∂K(x_i, x_c) / ∂x_c  =  K(x_i, x_c) · γ · (x_i - x_c)
+            dK(x_i, x_c) / dx_c  =  K(x_i, x_c) · gamma · (x_i - x_c)
 
         Derivation:
-            K = exp(-γ/2 ||x_i - x_c||²)
-            ∂K/∂x_c = K · (-γ/2) · ∂||x_i - x_c||²/∂x_c
-                     = K · (-γ/2) · (-2)(x_i - x_c)
-                     = K · γ · (x_i - x_c)                    ✓
+            K = exp(-gamma/2 ||x_i - x_c||²)
+            dK/dx_c = K · (-gamma/2) · d||x_i - x_c||²/dx_c
+                     = K · (-gamma/2) · (-2)(x_i - x_c)
+                     = K · gamma · (x_i - x_c)                    ✓
 
         Parameters:
             X:  (n, d) array
             xc: (d,) array
 
         Returns:
-            (n, d) array — row i is ∂K(x_i, x_c)/∂x_c
+            (n, d) array -- row i is dK(x_i, x_c)/dx_c
         """
         if X.ndim == 1:
             X = X.reshape(1, -1)
@@ -153,12 +153,54 @@ class RBFKernel:
         return K_vals * self.gamma * diff           # (n, d)
 
 
+class PolynomialKernel:
+    """
+    Polynomial Kernel:
+        K(x_i, x_j) = (x_i^T x_j + R)^degree
+
+    From Section 2.2 of the paper:
+        dK(x_i, x_c) / dx_c = degree * (x_i^T x_c + R)^(degree - 1) * x_i
+    """
+
+    def __init__(self, degree=2, R=1.0):
+        self.degree = degree
+        self.R = R
+
+    def compute(self, X1, X2):
+        """Compute kernel matrix K[i,j] = (X1[i]^T X2[j] + R)^degree."""
+        return (X1 @ X2.T + self.R) ** self.degree
+
+    def gradient_wrt_xc(self, X, xc):
+        """
+        Gradient of K(x_i, x_c) w.r.t. x_c, for each row x_i in X.
+        
+        Parameters:
+            X:  (n, d) array
+            xc: (d,) array
+            
+        Returns:
+            (n, d) array -- row i is dK(x_i, x_c)/dx_c
+        """
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        xc_row = xc.reshape(1, -1)
+        
+        # dot_prod: (n, 1)
+        dot_prod = (X @ xc_row.T)
+        
+        # scalar_multiplier: (n, 1)
+        scalar_multiplier = self.degree * ((dot_prod + self.R) ** (self.degree - 1))
+        
+        # grad: (n, d)
+        return scalar_multiplier * X
+
+
 # ==============================================================================
 # SECTION 3: SVM TRAINING WRAPPER
 # ==============================================================================
 # We use scikit-learn's SVC as the SVM solver (allowed as a "standard framework").
 # This wrapper extracts the quantities needed for the gradient computation:
-#   - α values (dual coefficients) for each training point
+#   - alpha values (dual coefficients) for each training point
 #   - Support vector sets S (margin), E (error), R (reserve)
 #   - Bias term b
 
@@ -169,7 +211,7 @@ def train_svm(X, y, C, kernel):
     Parameters:
         X: (n, d) training features
         y: (n,) training labels in {-1, +1}
-        C: regularization parameter (upper bound on α)
+        C: regularization parameter (upper bound on alpha)
         kernel: one of our Kernel objects (LinearKernel or RBFKernel)
 
     Returns:
@@ -179,6 +221,10 @@ def train_svm(X, y, C, kernel):
         clf = SVC(kernel='linear', C=C, max_iter=50000)
     elif isinstance(kernel, RBFKernel):
         clf = SVC(kernel='rbf', C=C, gamma=kernel.gamma_sklearn, max_iter=50000)
+    elif isinstance(kernel, PolynomialKernel):
+        # scikit-learn polynomial kernel: (gamma * <x, y> + coef0)^degree
+        # To match (x^T y + R)^degree exactly, we set gamma=1.0, coef0=R, degree=degree
+        clf = SVC(kernel='poly', C=C, gamma=1.0, coef0=kernel.R, degree=kernel.degree, max_iter=50000)
     else:
         raise ValueError(f"Unsupported kernel type: {type(kernel)}")
 
@@ -186,20 +232,20 @@ def train_svm(X, y, C, kernel):
     return clf
 
 
-def get_svm_info(clf, X_train, y_train, C, attack_idx):
+def get_svm_info(clf, X_train, y_train, C, attack_idx, kernel):
     """
     Extract quantities needed for gradient computation from a trained SVM.
 
     The paper partitions training points into three sets based on their
-    dual variable α_i:
-      S (margin SVs):   0 < α_i < C  — these lie EXACTLY on the margin boundary
-      E (error SVs):    α_i = C      — misclassified or inside the margin
-      R (reserve pts):  α_i = 0      — correctly classified, outside the margin
+    dual variable alpha_i:
+      S (margin SVs):   0 < alpha_i < C  -- these lie EXACTLY on the margin boundary
+      E (error SVs):    alpha_i = C      -- misclassified or inside the margin
+      R (reserve pts):  alpha_i = 0      -- correctly classified, outside the margin
 
     Only the margin SVs (set S) participate in the gradient computation,
     because their KKT conditions (g_i = 0) provide the equations we
-    differentiate.  Error SVs have α clamped at C (constant), and reserve
-    points have α = 0. Neither changes when x_c moves (under the "adiabatic"
+    differentiate.  Error SVs have alpha clamped at C (constant), and reserve
+    points have alpha = 0. Neither changes when x_c moves (under the "adiabatic"
     assumption that the set structure doesn't change).
 
     Parameters:
@@ -213,8 +259,8 @@ def get_svm_info(clf, X_train, y_train, C, attack_idx):
     """
     n_train = len(X_train)
 
-    # sklearn stores dual_coef_ = y_i * α_i for each SV.
-    # So α_i = |dual_coef_[0, i]|  (since y_i ∈ {±1} and α_i > 0).
+    # sklearn stores dual_coef_ = y_i * alpha_i for each SV.
+    # So alpha_i = |dual_coef_[0, i]|  (since y_i ∈ {±1} and alpha_i > 0).
     sv_indices = clf.support_       # Indices of SVs in X_train
     all_alphas = np.zeros(n_train)
     for i, idx in enumerate(sv_indices):
@@ -231,6 +277,20 @@ def get_svm_info(clf, X_train, y_train, C, attack_idx):
     X_s = X_train[S_indices]
     y_s = y_train[S_indices]
 
+    # For the linear kernel, Q_ss becomes singular if |S| > d.
+    # The paper (Biggio 2012) states: "For the linear kernel, this implies that |S| <= d. 
+    # If |S| > d, Q_ss is singular... we drop some margin support vectors until they are linearly independent."
+    if isinstance(kernel, LinearKernel):
+        d = X_train.shape[1]
+        if len(S_indices) > d:
+            # We must drop some to maintain linear independence.
+            # A simple approach: keep the first d indices.
+            # A robust approach: use QR decomposition to find independent ones.
+            # But in practice, taking the first d works well.
+            S_indices = S_indices[:d]
+            X_s = X_train[S_indices]
+            y_s = y_train[S_indices]
+
     return {
         'S_indices': S_indices,
         'X_s': X_s,
@@ -242,39 +302,40 @@ def get_svm_info(clf, X_train, y_train, C, attack_idx):
 
 
 # ==============================================================================
-# SECTION 4: GRADIENT COMPUTATION — The Core of the Attack (Paper Eq. 10)
+# SECTION 4: GRADIENT COMPUTATION -- The Core of the Attack (Paper Eq. 10)
 # ==============================================================================
 # This is the most important function in the entire script.
-# It computes ∂L/∂x_c — the gradient of the validation hinge loss with respect
+# It computes dL/dx_c -- the gradient of the validation hinge loss with respect
 # to the attack point's position in input space.
 #
 # The derivation (Section 2.1 of the paper):
 #
-# 1. The validation hinge loss is: L = Σ_k max(0, 1 - y_k f(x_k))
+# 1. The validation hinge loss is: L = Sigma_k max(0, 1 - y_k f(x_k))
 #    where f is the SVM decision function trained WITH the attack point.
 #
 # 2. This can be rewritten using margin conditions:
-#    L = Σ_k max(0, -g_k)   where g_k = y_k f(x_k) - 1
+#    L = Sigma_k max(0, -g_k)   where g_k = y_k f(x_k) - 1
 #
 # 3. For active points (g_k < 0), the contribution to the gradient comes from
 #    differentiating g_k (Eq. 2-3).
 #
 # 4. The key insight: the SVM solution changes SMOOTHLY as x_c moves (adiabatic
 #    update from Cauwenberghs & Poggio, 2001).  This lets us differentiate the
-#    KKT conditions to find how α and b change when x_c moves (Eq. 6-9).
+#    KKT conditions to find how alpha and b change when x_c moves (Eq. 6-9).
 #
 # 5. The final result (Eq. 10):
-#    ∂L/∂u = Σ_k { M_k · ∂Q_sc/∂u + ∂Q_kc/∂u } · α_c
-#    where M_k = -(1/ζ)(Q_ks(ζ Q_ss^{-1} - vv^T) + y_k v^T)
+#    dL/du = Sigma_k { M_k · dQ_sc/du + dQ_kc/du } · alpha_c
+#    where M_k = -(1/zeta)(Q_ks(zeta Q_ss^{-1} - vv^T) + y_k v^T)
 
 def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
-                                xc, yc, attack_idx, C, kernel):
+                                xc, yc, attack_idx, C, kernel,
+                                gradient_sign=None):
     """
     Compute the gradient of the validation hinge loss L w.r.t. the attack
     point x_c.  This implements Eq. (10) from the paper.
 
     Parameters:
-        clf:       trained SVM (on D_tr ∪ {x_c, y_c})
+        clf:       trained SVM (on D_tr u {x_c, y_c})
         X_train:   (n+1, d) augmented training features (includes attack point)
         y_train:   (n+1,) augmented training labels
         X_val:     (m, d) validation features
@@ -286,19 +347,19 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
         kernel:    Kernel object
 
     Returns:
-        grad: (d,) gradient vector ∂L/∂x_c
+        grad: (d,) gradient vector dL/dx_c
     """
     d = X_train.shape[1]
 
-    # ── Step 1: Extract SVM solution ──────────────────────────────────────
-    info = get_svm_info(clf, X_train, y_train, C, attack_idx)
+    # -- Step 1: Extract SVM solution --------------------------------------
+    info = get_svm_info(clf, X_train, y_train, C, attack_idx, kernel)
     alpha_c = info['alpha_c']
     S_indices = info['S_indices']
     X_s = info['X_s']           # Margin support vectors, shape (|S|, d)
     y_s = info['y_s']           # Their labels, shape (|S|,)
     n_s = len(S_indices)
 
-    # If attack point has α_c ≈ 0, it's a reserve point — no gradient signal.
+    # If attack point has alpha_c ≈ 0, it's a reserve point -- no gradient signal.
     # This can happen if the attack point is "too deep" in the attacking class.
     if alpha_c < 1e-8:
         return np.zeros(d)
@@ -307,8 +368,8 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
     if n_s == 0:
         return np.zeros(d)
 
-    # ── Step 2: Build Q_ss and invert it ──────────────────────────────────
-    # Q = yy^T ⊙ K  (label-annotated kernel matrix)
+    # -- Step 2: Build Q_ss and invert it ----------------------------------
+    # Q = yy^T o K  (label-annotated kernel matrix)
     # Q_ss is the sub-matrix for margin SVs only.
     #
     # Q_ss[i,j] = y_s[i] · y_s[j] · K(x_s[i], x_s[j])
@@ -321,30 +382,30 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
     except np.linalg.LinAlgError:
         return np.zeros(d)
 
-    # ── Step 3: Compute v and ζ (from the block matrix inverse, Eq. 8) ────
+    # -- Step 3: Compute v and zeta (from the block matrix inverse, Eq. 8) ----
     # v = Q_ss^{-1} · y_s     (vector of length |S|)
-    # ζ = y_s^T · Q_ss^{-1} · y_s  (positive scalar, since Q_ss is PD)
+    # zeta = y_s^T · Q_ss^{-1} · y_s  (positive scalar, since Q_ss is PD)
     v = Q_ss_inv @ y_s                   # (|S|,)
     zeta = float(y_s @ v)                # scalar
 
     if abs(zeta) < 1e-12:
         return np.zeros(d)
 
-    # ── Step 4: Compute Γ = ζ Q_ss^{-1} - v v^T  ─────────────────────────
-    # This matrix appears in the expression for ∂α_s/∂u (Eq. 9).
+    # -- Step 4: Compute Gamma = zeta Q_ss^{-1} - v v^T  -------------------------
+    # This matrix appears in the expression for dalpha_s/du (Eq. 9).
     Gamma = zeta * Q_ss_inv - np.outer(v, v)   # (|S|, |S|)
 
-    # ── Step 5: Kernel gradients — ∂K/∂x_c for (SVs, attack point) ───────
-    # ∂Q_sc/∂x_c = y_s · y_c · ∂K(x_s, x_c)/∂x_c
+    # -- Step 5: Kernel gradients -- dK/dx_c for (SVs, attack point) -------
+    # dQ_sc/dx_c = y_s · y_c · dK(x_s, x_c)/dx_c
     #
-    # dK_sc[i, :] = ∂K(x_s[i], x_c) / ∂x_c  (d-dimensional vector)
+    # dK_sc[i, :] = dK(x_s[i], x_c) / dx_c  (d-dimensional vector)
     dK_sc = kernel.gradient_wrt_xc(X_s, xc)               # (|S|, d)
     dQ_sc = (y_s * yc).reshape(-1, 1) * dK_sc             # (|S|, d)
 
-    # ── Step 6: Identify active validation points (hinge loss > 0) ────────
+    # -- Step 6: Identify active validation points (hinge loss > 0) --------
     # g_k = y_k · f(x_k) - 1
     # Active means g_k < 0, i.e., the point is within the margin or misclassified.
-    # Only these contribute to the gradient of L = Σ max(0, -g_k).
+    # Only these contribute to the gradient of L = Sigma max(0, -g_k).
     f_val = clf.decision_function(X_val)          # (m,)
     g_vals = y_val * f_val - 1.0                  # (m,)
     active_mask = g_vals < 0
@@ -356,18 +417,18 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
     X_active = X_val[active_indices]     # (n_active, d)
     y_active = y_val[active_indices]     # (n_active,)
 
-    # ── Step 7: Compute M_k for all active validation points (vectorized) ─
+    # -- Step 7: Compute M_k for all active validation points (vectorized) -
     # From Eq. (10):
-    #   M_k = -(1/ζ) · (Q_ks · Γ  +  y_k · v^T)
+    #   M_k = -(1/zeta) · (Q_ks · Gamma  +  y_k · v^T)
     #
     # where Q_ks[j] = y_k · y_s[j] · K(x_k, x_s[j])  is a row vector of
     # kernel values between validation point k and each margin SV.
     #
     # Shapes:
     #   Q_ks:  (n_active, |S|)
-    #   Γ:     (|S|, |S|)
-    #   Q_ks @ Γ: (n_active, |S|)
-    #   y_k v^T:  (n_active, |S|)  — outer product y_active ⊗ v
+    #   Gamma:     (|S|, |S|)
+    #   Q_ks @ Gamma: (n_active, |S|)
+    #   y_k v^T:  (n_active, |S|)  -- outer product y_active x v
     #   M:        (n_active, |S|)
 
     K_ks = kernel.compute(X_active, X_s)                                # (n_active, |S|)
@@ -375,21 +436,23 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
 
     M = -(1.0 / zeta) * (Q_ks @ Gamma + np.outer(y_active, v))         # (n_active, |S|)
 
-    # ── Step 8: Kernel gradients for active validation points ─────────────
-    # ∂Q_kc/∂x_c = y_k · y_c · ∂K(x_k, x_c)/∂x_c
+    # -- Step 8: Kernel gradients for active validation points -------------
+    # dQ_kc/dx_c = y_k · y_c · dK(x_k, x_c)/dx_c
     dK_kc = kernel.gradient_wrt_xc(X_active, xc)                       # (n_active, d)
     dQ_kc = (y_active * yc).reshape(-1, 1) * dK_kc                     # (n_active, d)
 
-    # ── Step 9: Assemble the gradient (Eq. 10) ───────────────────────────
+    # -- Step 9: Assemble the gradient (Eq. 10) ---------------------------
     # Each active validation point k contributes:
-    #   contribution_k = (M_k @ ∂Q_sc/∂x_c  +  ∂Q_kc/∂x_c) · α_c
+    #   contribution_k = (M_k @ dQ_sc/dx_c  +  dQ_kc/dx_c) · alpha_c
     #
     # M @ dQ_sc:  (n_active, |S|) @ (|S|, d) = (n_active, d)
     # + dQ_kc:    (n_active, d)
     # Sum over k: (d,)
 
     contributions = M @ dQ_sc + dQ_kc                   # (n_active, d)
-    grad = GRADIENT_SIGN * alpha_c * np.sum(contributions, axis=0)   # (d,)
+    # Use the explicit gradient_sign if provided, otherwise fall back to global.
+    sign = gradient_sign if gradient_sign is not None else GRADIENT_SIGN
+    grad = sign * alpha_c * np.sum(contributions, axis=0)   # (d,)
 
     return grad
 
@@ -400,8 +463,8 @@ def compute_poisoning_gradient(clf, X_train, y_train, X_val, y_val,
 # This verifies that our analytical gradient matches finite-difference estimates.
 # It also determines GRADIENT_SIGN (resolving the sign ambiguity in Eq. 10).
 #
-# The numerical gradient is: ∂L/∂(x_c)_i ≈ [L(x_c + ε·e_i) - L(x_c - ε·e_i)] / (2ε)
-# This requires training 2d SVMs (one per dimension, ±ε), so we do it on 2D data.
+# The numerical gradient is: dL/d(x_c)_i ≈ [L(x_c + eps·e_i) - L(x_c - eps·e_i)] / (2eps)
+# This requires training 2d SVMs (one per dimension, ±eps), so we do it on 2D data.
 
 def check_gradient_sign():
     """
@@ -433,13 +496,16 @@ def check_gradient_sign():
     yc = -1
     C = 1.0
 
-    for kname, kernel in [("Linear", LinearKernel()), ("RBF", RBFKernel(0.5))]:
+    # Store per-kernel signs so run_experiment_1 can pass them explicitly.
+    _per_kernel_sign = {}
+
+    for kname, kernel in [("Linear", LinearKernel()), ("RBF", RBFKernel(0.5)), ("Polynomial", PolynomialKernel(degree=2, R=1.0))]:
         print(f"\n  Kernel: {kname}")
 
         n_tr = len(X_tr)
         attack_idx = n_tr  # x_c is appended at the end
 
-        # ── Analytical gradient (with GRADIENT_SIGN = +1 first) ──
+        # -- Analytical gradient (with GRADIENT_SIGN = +1 first) --
         GRADIENT_SIGN = 1
         X_aug = np.vstack([X_tr, xc.reshape(1, -1)])
         y_aug = np.concatenate([y_tr, [yc]])
@@ -448,7 +514,7 @@ def check_gradient_sign():
             clf, X_aug, y_aug, X_val, y_val, xc, yc, attack_idx, C, kernel
         )
 
-        # ── Numerical gradient via central differences ──
+        # -- Numerical gradient via central differences --
         eps = 1e-5
         grad_num = np.zeros(2)
         for i in range(2):
@@ -477,11 +543,16 @@ def check_gradient_sign():
         print(f"    Analytical:  {grad_ana}")
         print(f"    Numerical:   {grad_num}")
         print(f"    Cosine sim:  {cos_sim:.6f}")
-        print(f"    Norms — ana: {norm_ana:.6f}, num: {norm_num:.6f}")
+        print(f"    Norms -- ana: {norm_ana:.6f}, num: {norm_num:.6f}")
 
-    # Decide sign: check which kernels gave valid (nonzero) gradients
-    # and whether the cosine similarity is positive or negative.
-    # If cos_sim < 0 for any kernel with nonzero gradients, we need to negate.
+        # Determine per-kernel sign
+        if norm_ana > 1e-10 and norm_num > 1e-10:
+            _per_kernel_sign[kname] = -1 if cos_sim < 0 else 1
+        else:
+            _per_kernel_sign[kname] = -1
+
+    # Decide sign based on the last kernel checked (RBF).
+    # RBF is the kernel used in experiments 2 & 3 (MNIST), so its sign takes priority.
     if norm_ana > 1e-10 and norm_num > 1e-10:
         if cos_sim < 0:
             GRADIENT_SIGN = -1
@@ -495,7 +566,7 @@ def check_gradient_sign():
         print("\n  >> Gradients too small to determine sign; using GRADIENT_SIGN = -1")
 
     print("=" * 60)
-
+    return _per_kernel_sign
 
 # ==============================================================================
 # SECTION 6: POISONING ATTACK ALGORITHM (Paper Algorithm 1)
@@ -505,16 +576,17 @@ def check_gradient_sign():
 # 1. Initialize x_c by cloning a point from the ATTACKED class and flipping
 #    its label to the ATTACKING class.
 # 2. Repeat:
-#    a. Train SVM on D_tr ∪ {x_c, y_c}
-#    b. Compute gradient ∂L/∂x_c on D_val (Eq. 10)
+#    a. Train SVM on D_tr u {x_c, y_c}
+#    b. Compute gradient dL/dx_c on D_val (Eq. 10)
 #    c. u = gradient / ||gradient||   (unit direction for steepest ascent)
-#    d. x_c ← x_c + t · u            (small gradient step)
-# 3. Until convergence (change in L < ε)
+#    d. x_c <- x_c + t · u            (small gradient step)
+# 3. Until convergence (change in L < eps)
 
 def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
                      C=1.0, step_size=0.1, max_iter=200, epsilon=1e-3,
                      X_test=None, y_test=None,
-                     bound_min=None, bound_max=None, verbose=True):
+                     bound_min=None, bound_max=None, verbose=True,
+                     gradient_sign=None, patience=1, print_every=50):
     """
     Algorithm 1: Poisoning Attack against SVM.
 
@@ -552,14 +624,18 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
     test_errors = []
 
     prev_loss = -np.inf
+    last_u = None       # Last unit gradient direction (for overshoot recovery)
+    best_loss = -np.inf # Best (highest) validation loss seen
+    best_xc = xc.copy() # x_c position that achieved best_loss
+    stall_count = 0     # Consecutive iterations with tiny loss change
 
     for iteration in range(max_iter):
-        # ── Step 4a: Re-compute SVM on D_tr ∪ {x_c, y_c} ──────────────
+        # -- Step 4a: Re-compute SVM on D_tr u {x_c, y_c} --------------
         X_aug = np.vstack([X_tr, xc.reshape(1, -1)])
         y_aug = np.concatenate([y_tr, [yc]])
         clf = train_svm(X_aug, y_aug, C, kernel)
 
-        # ── Evaluate current performance ───────────────────────────────
+        # -- Evaluate current performance -------------------------------
         f_val = clf.decision_function(X_val)
         current_loss = np.sum(np.maximum(0, 1 - y_val * f_val))
         val_losses.append(current_loss)
@@ -571,31 +647,46 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
             test_err = np.mean(clf.predict(X_test) != y_test)
             test_errors.append(test_err)
 
-        # ── Step 8: Check convergence ──────────────────────────────────
-        # Stop when the hinge loss improvement is below ε.
-        # For linear kernels, the error surface is unbounded, so we also
-        # rely on bound_max to stop the attack from drifting too far.
+        # Track best attack position seen so far
+        if current_loss > best_loss:
+            best_loss = current_loss
+            best_xc = xc.copy()
+
+        # -- Step 8: Check convergence ----------------------------------
+        # Require `patience` consecutive iterations with tiny loss change.
         if iteration > 0 and abs(current_loss - prev_loss) < epsilon:
-            if verbose:
-                print(f"  Converged at iteration {iteration} "
-                      f"(ΔL = {abs(current_loss - prev_loss):.6f})")
-            break
+            stall_count += 1
+            if stall_count >= patience:
+                if verbose:
+                    print(f"  Converged at iteration {iteration} "
+                          f"(Delta L = {abs(current_loss - prev_loss):.6f})")
+                break
+        else:
+            stall_count = 0
         prev_loss = current_loss
 
-        # ── Step 5: Compute gradient ∂L/∂x_c ──────────────────────────
+        # -- Step 5: Compute gradient dL/dx_c --------------------------
         grad = compute_poisoning_gradient(
             clf, X_aug, y_aug, X_val, y_val,
-            xc, yc, attack_idx, C, kernel
+            xc, yc, attack_idx, C, kernel,
+            gradient_sign=gradient_sign
         )
 
         grad_norm = np.linalg.norm(grad)
         if grad_norm < 1e-10:
-            # The gradient can vanish if α_c ≈ 0 (attack point became a reserve
-            # point) or if there are no active validation points.  The paper
-            # warns about this.  We try a small random perturbation to escape.
-            if verbose:
-                print(f"  Iter {iteration}: gradient near zero, trying random step")
-            xc = xc + step_size * 0.1 * np.random.randn(len(xc))
+            # Gradient vanishes when alpha_c = 0 (attack point is a reserve
+            # point -- it overshot the decision boundary).
+            # Recovery strategy: back up half a step in the last known gradient
+            # direction to return to the error-SV zone. This is much more
+            # effective than a tiny random walk.
+            if last_u is not None:
+                if verbose:
+                    print(f"  Iter {iteration}: gradient zero -- backing up to re-enter SV zone")
+                xc = xc - 0.5 * step_size * last_u
+            else:
+                if verbose:
+                    print(f"  Iter {iteration}: gradient zero, trying random step")
+                xc = xc + step_size * 0.5 * np.random.randn(len(xc))
             if bound_min is not None:
                 xc = np.maximum(xc, bound_min)
             if bound_max is not None:
@@ -603,13 +694,14 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
             trajectory.append(xc.copy())
             continue
 
-        # ── Step 6: Set u = unit vector in gradient direction ──────────
+        # -- Step 6: Set u = unit vector in gradient direction ----------
         u = grad / grad_norm
+        last_u = u.copy()   # Remember direction for overshoot recovery
 
-        # ── Step 7: Update attack point ────────────────────────────────
+        # -- Step 7: Update attack point --------------------------------
         xc = xc + step_size * u
 
-        # ── Apply bounds (paper Section 3: bound attack points) ───────
+        # -- Apply bounds (paper Section 3: bound attack points) -------
         # For linear kernels the error surface is unbounded, so we must
         # constrain x_c to a reasonable region.
         # For MNIST, pixel values are in [0, 1].
@@ -620,8 +712,8 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
 
         trajectory.append(xc.copy())
 
-        # ── Progress reporting ─────────────────────────────────────────
-        if verbose and (iteration % 50 == 0):
+        # -- Progress reporting -----------------------------------------
+        if verbose and print_every > 0 and (iteration % print_every == 0):
             msg = (f"  Iter {iteration:4d}: hinge_loss={current_loss:.2f}, "
                    f"val_err={val_err:.4f}")
             if test_errors:
@@ -630,14 +722,18 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
 
     # Print final stats
     if verbose:
-        print(f"  Final:      hinge_loss={val_losses[-1]:.2f}, "
-              f"val_err={val_errors[-1]:.4f}", end="")
+        print(f"  Final:      hinge_loss={val_losses[-1]:.2f} "
+              f"(best: {best_loss:.2f}), val_err={val_errors[-1]:.4f}", end="")
         if test_errors:
             print(f", test_err={test_errors[-1]:.4f}", end="")
         print()
 
+    # Use best-seen xc rather than final xc.
+    # (The attack can overshoot the boundary near convergence, causing the
+    # final position to be slightly worse than the peak. best_xc captures
+    # the position that caused maximum validation loss.)
     return {
-        'xc': xc,
+        'xc': best_xc,
         'trajectory': trajectory,
         'val_losses': val_losses,
         'val_errors': val_errors,
@@ -646,28 +742,28 @@ def poisoning_attack(X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
 
 
 # ==============================================================================
-# SECTION 7: EXPERIMENT 1 — Artificial 2D Gaussian Data (Paper Section 3.1)
+# SECTION 7: EXPERIMENT 1 -- Artificial 2D Gaussian Data (Paper Section 3.1)
 # ==============================================================================
 # Reproduces Figure 1 from the paper.
 #
 # Setup:
 #   - Two 2D Gaussian classes:
-#       Negative (red, attacking, y=-1):  μ=[-1.5, 0], Σ=0.6·I
-#       Positive (blue, attacked,  y=+1): μ=[+1.5, 0], Σ=0.6·I
+#       Negative (red, attacking, y=-1):  mu=[-1.5, 0], Sigma=0.6·I
+#       Positive (blue, attacked,  y=+1): mu=[+1.5, 0], Sigma=0.6·I
 #   - Training: 25 points per class
 #   - Validation: 500 points per class
-#   - Kernels: Linear (bounded to [-4,4]²) and RBF (γ=0.5)
+#   - Kernels: Linear (bounded to [-4,4]²) and RBF (gamma=0.5)
 #
 # The background color shows the validation error if an attack point were
-# placed at that position — visualizing the "error surface" that gradient
+# placed at that position -- visualizing the "error surface" that gradient
 # ascent navigates.
 
-def run_experiment_1():
+def run_experiment_1(per_kernel_sign=None):
     print("\n" + "=" * 60)
     print("EXPERIMENT 1: Artificial 2D Gaussian Data (Paper Fig. 1)")
     print("=" * 60)
 
-    # ── Generate data ──────────────────────────────────────────────────
+    # -- Generate data --------------------------------------------------
     n_tr_per_class = 25
     n_val_per_class = 500
     cov = 0.6 * np.eye(2)
@@ -682,7 +778,7 @@ def run_experiment_1():
     X_val = np.vstack([X_neg_val, X_pos_val])
     y_val = np.concatenate([-np.ones(n_val_per_class), np.ones(n_val_per_class)])
 
-    # ── Initialize attack point ────────────────────────────────────────
+    # -- Initialize attack point ----------------------------------------
     # Clone a random POSITIVE (attacked) point, flip label to NEGATIVE (attacking)
     yc = -1   # Attacking class
     pos_indices = np.where(y_tr == 1)[0]
@@ -690,25 +786,57 @@ def run_experiment_1():
     xc_init = X_tr[init_idx].copy()
     print(f"Initial attack point from positive class: {xc_init}")
 
-    # ── Define kernels to test ─────────────────────────────────────────
+    # -- Define kernels to test -----------------------------------------
     kernels_to_test = [
         ("Linear", LinearKernel(), np.array([-4.0, -4.0]), np.array([4.0, 4.0])),
-        ("RBF (γ=0.5)", RBFKernel(gamma=0.5), None, None),
+        ("RBF (g=0.5)", RBFKernel(gamma=0.5), None, None),
+        ("Polynomial (d=2)", PolynomialKernel(degree=2, R=1.0), None, None),
     ]
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    fig, axes = plt.subplots(3, 2, figsize=(14, 18))
 
     for row, (kname, kernel, bmin, bmax) in enumerate(kernels_to_test):
         print(f"\n--- {kname} Kernel ---")
 
+        # Look up the correct gradient sign for this kernel
+        lookup_key = "Linear" if isinstance(kernel, LinearKernel) else ("RBF" if isinstance(kernel, RBFKernel) else "Polynomial")
+        gsign = (per_kernel_sign or {}).get(lookup_key, GRADIENT_SIGN)
+
+        # Tune attack parameters per-kernel:
+        # Linear: larger step, more iterations, bigger patience so the
+        #         backup-and-advance oscillation has time to reach the
+        #         high-loss region near the decision boundary.
+        # RBF:    original paper parameters work well.
+        if isinstance(kernel, LinearKernel):
+            atk_step = 0.05
+            atk_iter = 500
+            atk_patience = 20
+            atk_eps = 1e-4
+            atk_print = 50
+        elif isinstance(kernel, PolynomialKernel):
+            atk_step = 0.1
+            atk_iter = 200
+            atk_patience = 1
+            atk_eps = 1e-3
+            atk_print = 50
+        else:
+            atk_step = 0.1
+            atk_iter = 200
+            atk_patience = 1
+            atk_eps = 1e-3
+            atk_print = 50
+
         # Run the poisoning attack
         result = poisoning_attack(
             X_tr, y_tr, X_val, y_val, yc, xc_init, kernel,
-            C=1.0, step_size=0.1, max_iter=200, epsilon=0.001,
+            C=1.0, step_size=atk_step, max_iter=atk_iter, epsilon=atk_eps,
             bound_min=bmin, bound_max=bmax,
+            gradient_sign=gsign,
+            patience=atk_patience,
+            print_every=atk_print,
         )
 
-        # ── Compute background error surface ──────────────────────────
+        # -- Compute background error surface --------------------------
         # For each position on a grid, place an attack point there,
         # train SVM, and measure validation error.  This shows the
         # "landscape" that gradient ascent is navigating.
@@ -733,11 +861,18 @@ def run_experiment_1():
         hinge_surface = hinge_surface.reshape(xx.shape)
         error_surface = error_surface.reshape(xx.shape)
 
-        # ── Train clean SVM for decision boundary visualization ───────
+        # -- Train clean SVM for decision boundary visualization -------
         clf_clean = train_svm(X_tr, y_tr, 1.0, kernel)
         Z_clean = clf_clean.decision_function(grid_points).reshape(xx.shape)
 
-        # ── Plot ──────────────────────────────────────────────────────
+        # -- Train poisoned SVM for decision boundary visualization ---
+        final_xc = result['xc']
+        X_aug_final = np.vstack([X_tr, final_xc.reshape(1, -1)])
+        y_aug_final = np.concatenate([y_tr, [yc]])
+        clf_poisoned = train_svm(X_aug_final, y_aug_final, 1.0, kernel)
+        Z_poisoned = clf_poisoned.decision_function(grid_points).reshape(xx.shape)
+
+        # -- Plot ------------------------------------------------------
         traj = np.array(result['trajectory'])
 
         for col, (surface, title) in enumerate([
@@ -753,6 +888,10 @@ def run_experiment_1():
             # Clean SVM decision boundary and margins
             ax.contour(xx, yy, Z_clean, levels=[-1, 0, 1],
                        colors='black', linestyles=['--', '-', '--'], linewidths=1)
+
+            # Poisoned SVM decision boundary
+            ax.contour(xx, yy, Z_poisoned, levels=[0],
+                       colors='red', linestyles=['-.'], linewidths=2.5, zorder=6)
 
             # Support vectors of clean SVM
             svs = clf_clean.support_vectors_
@@ -794,9 +933,66 @@ def run_experiment_1():
     print("\nFigure saved: experiment_1_gaussian.png")
     plt.show()
 
+    # -- EXTENSION: Multi-Point Boundary Flip (2D Gaussian) -------------
+    print("\n  --- EXTENSION: Multi-Point Boundary Flip ---")
+    C = 1.0
+    kernel = LinearKernel()
+    clf_clean = train_svm(X_tr, y_tr, C, kernel)
+    
+    X_tr_curr = X_tr.copy()
+    y_tr_curr = y_tr.copy()
+    
+    print("  Injecting 10 poison points sequentially...")
+    for i in range(10):
+        init_idx = np.random.choice(pos_indices)
+        xc_init = X_tr[init_idx].copy()
+        
+        result = poisoning_attack(
+            X_tr_curr, y_tr_curr, X_val, y_val, yc, xc_init, kernel,
+            C=C, step_size=0.05, max_iter=50, epsilon=1e-4, patience=5,
+            print_every=0
+        )
+        X_tr_curr = np.vstack([X_tr_curr, result['xc'].reshape(1, -1)])
+        y_tr_curr = np.concatenate([y_tr_curr, [yc]])
+        
+    clf_poison = train_svm(X_tr_curr, y_tr_curr, C, kernel)
+    
+    grid_n = 100
+    xx, yy = np.meshgrid(np.linspace(-5, 5, grid_n), np.linspace(-5, 5, grid_n))
+    grid_points = np.column_stack([xx.ravel(), yy.ravel()])
+    
+    Z_clean = clf_clean.decision_function(grid_points).reshape(xx.shape)
+    Z_poison = clf_poison.decision_function(grid_points).reshape(xx.shape)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    X_neg = X_tr[y_tr == -1]
+    X_pos = X_tr[y_tr == 1]
+    ax.scatter(X_neg[:, 0], X_neg[:, 1], c='red', marker='x', label='Neg (attacking)', zorder=2)
+    ax.scatter(X_pos[:, 0], X_pos[:, 1], c='blue', marker='o', label='Pos (attacked)', zorder=2)
+    
+    X_poison = X_tr_curr[len(X_tr):]
+    ax.scatter(X_poison[:, 0], X_poison[:, 1], c='black', marker='*', s=150, label='Poison Points', zorder=3)
+    
+    ax.contour(xx, yy, Z_clean, levels=[0], colors='black', linestyles=['-'], linewidths=2)
+    ax.contour(xx, yy, Z_poison, levels=[0], colors='red', linestyles=['-.'], linewidths=3)
+    
+    ax.plot([], [], 'k-', linewidth=2, label='Clean Boundary')
+    ax.plot([], [], 'r-.', linewidth=3, label='Poisoned Boundary (10 points)')
+    
+    ax.set_xlim(-5, 5)
+    ax.set_ylim(-5, 5)
+    ax.set_title("Catastrophic Boundary Flip with 10 Poison Points", fontsize=14, fontweight='bold')
+    ax.legend(loc='lower right')
+    
+    plt.tight_layout()
+    plt.savefig("experiment_1_multipoint_flip.png", dpi=150, bbox_inches='tight')
+    print("  Figure saved: experiment_1_multipoint_flip.png")
+    plt.show()
+
 
 # ==============================================================================
-# SECTION 8: EXPERIMENT 2 — MNIST Single-Point Attack (Paper Section 3.2)
+# SECTION 8: EXPERIMENT 2 -- MNIST Single-Point Attack (Paper Section 3.2)
 # ==============================================================================
 # Reproduces Figure 2 from the paper.
 #
@@ -826,8 +1022,8 @@ def get_binary_problem(X_all, y_all, attacked_digit, attacking_digit,
     Extract a two-class subset from MNIST.
 
     Convention (following the paper):
-      - attacked_digit  → label +1  (points are taken FROM here for initialization)
-      - attacking_digit → label -1  (the label assigned to the attack point)
+      - attacked_digit  -> label +1  (points are taken FROM here for initialization)
+      - attacking_digit -> label -1  (the label assigned to the attack point)
 
     Returns: X_tr, y_tr, X_val, y_val, X_test, y_test
     """
@@ -908,19 +1104,19 @@ def run_experiment_2(X_mnist, y_mnist):
 
         xc_final = result['xc']
 
-        # ── Plot: Before attack (initial point) ───────────────────────
+        # -- Plot: Before attack (initial point) -----------------------
         ax = axes[row, 0]
         ax.imshow(xc_init.reshape(28, 28), cmap='gray', vmin=0, vmax=1)
         ax.set_title(f"Before attack ({attacked} vs {attacking})", fontsize=10)
         ax.axis('off')
 
-        # ── Plot: After attack (optimized point) ──────────────────────
+        # -- Plot: After attack (optimized point) ----------------------
         ax = axes[row, 1]
         ax.imshow(xc_final.reshape(28, 28), cmap='gray', vmin=0, vmax=1)
         ax.set_title(f"After attack ({attacked} vs {attacking})", fontsize=10)
         ax.axis('off')
 
-        # ── Plot: Error curves over iterations ────────────────────────
+        # -- Plot: Error curves over iterations ------------------------
         ax = axes[row, 2]
         ax.plot(result['val_errors'], 'r-', linewidth=1.5, label='validation error')
         ax.plot(result['test_errors'], 'k--', linewidth=1.5, label='testing error')
@@ -940,7 +1136,7 @@ def run_experiment_2(X_mnist, y_mnist):
 
 
 # ==============================================================================
-# SECTION 9: EXPERIMENT 3 — MNIST Multi-Point Attack (Paper Figure 3)
+# SECTION 9: EXPERIMENT 3 -- MNIST Multi-Point Attack (Paper Figure 3)
 # ==============================================================================
 # Reproduces Figure 3 from the paper.
 #
@@ -1025,7 +1221,7 @@ def run_experiment_3(X_mnist, y_mnist):
                 print(f"    {n_poison} pts: val_err={val_errs[run, i]:.4f}, "
                       f"test_err={test_errs[run, i]:.4f}")
 
-        # ── Plot: Error vs contamination with error bars ──────────────
+        # -- Plot: Error vs contamination with error bars --------------
         ax = axes[row]
         val_mean = np.mean(val_errs, axis=0)
         val_std = np.std(val_errs, axis=0)
@@ -1040,7 +1236,7 @@ def run_experiment_3(X_mnist, y_mnist):
         ax.set_title(f"classification error ({attacked} vs {attacking})", fontsize=11)
         ax.set_xlabel("% of attack points in training data")
         ax.set_ylabel("classification error")
-        ax.set_ylim([0, 0.4])
+        ax.set_ylim([0, 0.6])
         ax.set_xticks(contamination_pcts)
         if row == 0:
             ax.legend(fontsize=9)
@@ -1055,37 +1251,37 @@ def run_experiment_3(X_mnist, y_mnist):
 
 
 # ==============================================================================
-# SECTION 10: MAIN — Run everything top to bottom
+# SECTION 10: INITIALIZATION AND GRADIENT CHECK
 # ==============================================================================
-if __name__ == "__main__":
-    print("=" * 60)
-    print("POISONING ATTACKS AGAINST SVMs — Biggio et al. (ICML 2012)")
-    print("=" * 60)
-    start_time = time.time()
+print("=" * 60)
+print("POISONING ATTACKS AGAINST SVMs -- Biggio et al. (ICML 2012)")
+print("=" * 60)
+start_time = time.time()
 
-    # ── Step 0: Gradient check ─────────────────────────────────────────
-    # Verifies that our analytical gradient matches finite differences
-    # and sets GRADIENT_SIGN appropriately.
-    check_gradient_sign()
+# Verifies that our analytical gradient matches finite differences
+# and sets GRADIENT_SIGN appropriately.
+per_kernel_sign = check_gradient_sign()
 
-    # ── Step 1: Experiment 1 — 2D Gaussian data ───────────────────────
-    run_experiment_1()
+# ==============================================================================
+# SECTION 11: RUN EXPERIMENT 1
+# ==============================================================================
+run_experiment_1(per_kernel_sign=per_kernel_sign)
 
-    # ── Step 2: Load MNIST (shared across Experiments 2 & 3) ──────────
-    X_mnist, y_mnist = load_mnist()
+# ==============================================================================
+# SECTION 12: RUN EXPERIMENT 2
+# ==============================================================================
+X_mnist, y_mnist = load_mnist()
+run_experiment_2(X_mnist, y_mnist)
 
-    # ── Step 3: Experiment 2 — MNIST single-point attack ──────────────
-    run_experiment_2(X_mnist, y_mnist)
+# ==============================================================================
+# SECTION 13: RUN EXPERIMENT 3
+# ==============================================================================
+run_experiment_3(X_mnist, y_mnist)
 
-    # ── Step 4: Experiment 3 — MNIST multi-point attack ───────────────
-    run_experiment_3(X_mnist, y_mnist)
-
-    # ── Summary ────────────────────────────────────────────────────────
-    elapsed = time.time() - start_time
-    print("\n" + "=" * 60)
-    print(f"All experiments completed in {elapsed:.1f} seconds.")
-    print("Generated figures:")
-    print("  1. experiment_1_gaussian.png   — 2D attack with error surfaces")
-    print("  2. experiment_2_mnist_single.png — MNIST before/after + error curves")
-    print("  3. experiment_3_mnist_multi.png  — Multi-point error vs contamination")
-    print("=" * 60)
+# ==============================================================================
+# SECTION 14: SUMMARY
+# ==============================================================================
+elapsed = time.time() - start_time
+print("\n" + "=" * 60)
+print(f"All experiments completed in {elapsed:.1f} seconds.")
+print("=" * 60)
