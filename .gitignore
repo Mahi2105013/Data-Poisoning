@@ -2,3 +2,4 @@ experiment*.png
 convert_to_ipynb.py
 I have a plan/
 __pycache__/
+.pytest_cache/
